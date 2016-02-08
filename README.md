@@ -3,7 +3,7 @@ Number Guessing Game in Elm
 
 This is a simple number guessing game, which is a good example of how to
 use Elm to create a basic program with user input, information processing and
-output.
+output. [Click here to play the game.](https://gitcdn.xyz/repo/kittykatattack/numberGuessingGame/master/index.html)
 
 This code requires a familiarity with Elm using the `StartApp`
 architecture, and a level of understanding up to about Example #5 in
