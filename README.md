@@ -118,7 +118,7 @@ Guess ->
 
   ( { model 
 
-      -- Update the guessesRemaining and guessesMade
+      -- Update the guessesMade
 
       | guessesMade = model.guessesMade + 1
 
