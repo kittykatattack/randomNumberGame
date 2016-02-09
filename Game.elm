@@ -5,7 +5,6 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import String
---  import RandomNumber exposing (..)
 
 -- MODEL
 
@@ -19,7 +18,7 @@ type GameState
 
 
 type alias Model = 
-  { mysteryNumber : Int
+  { mysteryNumber : Int 
   , maxGuesses : Int
   , guessesMade : Int
   , gameState : GameState
@@ -37,10 +36,6 @@ init =
    , Effects.none
   )
 
-{--
-randomNumber =
-  RandomNumber.integerRange 
---}
 
 -- UPDATE
 
