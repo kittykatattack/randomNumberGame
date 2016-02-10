@@ -8,6 +8,8 @@ This new version of the game will give you a good overview of how to
 generate and use random numbers in a typical Elm application. You can
 play a demo of the game here:
 
+https://gitcdn.xyz/repo/kittykatattack/randomNumberGame/master/index.html
+
 A huge thanks to [Petre Damoc](https://gist.github.com/pdamoc) who
 contributed all this new code and explained to me how it works. You
 can read his original code [here](https://gist.github.com/pdamoc/3c4a4c9564d6235f504c), 
