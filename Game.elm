@@ -5,6 +5,10 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import String
+import Time
+import Task
+import Random exposing (generate, int, initialSeed)
+import String.Interpolate exposing (interpolate)
 
 -- MODEL
 
@@ -33,7 +37,7 @@ init =
    , gameState = Started
    , inputValue = 0
    }
-   , Effects.none
+   , newIntEffect
   )
 
 
@@ -43,6 +47,41 @@ type Action
   = Guess 
   | Restart
   | EnterText String
+  | NewMystery Int
+
+
+newRandIntMB = Signal.mailbox ()
+
+
+toAction (t, _) = 
+  let 
+    (newInt, _) = generate (int 1 100) (initialSeed (truncate t))
+  in 
+    NewMystery newInt
+
+
+newRandIntSignal = 
+  newRandIntMB.signal
+  |> Time.timestamp 
+  |> Signal.map toAction
+
+
+newIntEffect = 
+  Signal.send newRandIntMB.address ()
+  |> Task.map (always (EnterText ""))
+  |> Effects.task
+
+
+-- `intOrZero` converts a string to an integer, with a default value
+-- of 0
+
+intOrZero i = String.toInt i |> Result.toMaybe |> Maybe.withDefault 0 
+
+
+-- `noFx` returns a model without any Effects. It's just a nice way to
+-- reduce some boilerplate code
+
+noFx model = (model, Effects.none)
 
 
 update : Action -> Model -> (Model, Effects Action)
@@ -55,18 +94,17 @@ update action model =
         -- `checkGameState` tells you if the game is InProgress, Lost or Won 
                
         checkGameState model =
-          if model.guessesMade >= model.maxGuesses && model.inputValue /= model.mysteryNumber
-             then
-               Lost
-
-          else if model.guessesMade <= model.maxGuesses && model.inputValue == model.mysteryNumber 
-              then
-                Won
-
-          else InProgress
+          case 
+            ( model.guessesMade >= model.maxGuesses
+            , model.inputValue == model.mysteryNumber
+            ) 
+          of
+            (True, _) -> Lost
+            (_, True) -> Won
+            _ -> InProgress
       in
 
-      ( { model 
+      noFx { model 
 
           -- Update the guessesMade
 
@@ -75,23 +113,21 @@ update action model =
           -- Check the state of the game
 
           , gameState = checkGameState model
-        }
-        , Effects.none
-      )
+        } 
 
     -- Capture the input value from the text field in the model. This `EnterText`
     -- action is invoked each time the field value changes
 
-    EnterText inputValue ->
-      ( { model | inputValue =
-            String.toInt inputValue 
-              |> Result.toMaybe 
-              |> Maybe.withDefault 0 
-        }
-        , Effects.none
-      )
+    EnterText inputValue -> 
+      noFx { model | inputValue = intOrZero inputValue}
 
-   -- If the game is restarted, re-initialize the model
+    -- Generate a new random integer and use it to update the model's
+    -- `mysteryNumber`
+
+    NewMystery newInt -> 
+      noFx { model | mysteryNumber = newInt}
+      
+    -- If the game is restarted, re-initialize the model
 
     Restart ->
       init 
@@ -147,19 +183,22 @@ inputField address =
 gameMessage model =
   let
     stateMessage model =
-      " Your guess: "
-      ++ toString model.inputValue
-      ++ ", State: "
-      ++ toString model.gameState
-      ++ ", Mystery Number: "
-      ++ toString model.mysteryNumber
-      ++ if model.gameState == Started || model.gameState == InProgress then
-           ", Guess Number: " 
-           ++ toString model.guessesMade 
-           ++ ", Max Guesses:  " 
-           ++ toString model.maxGuesses
-         else
-           ""
+      let 
+        stateToString = 
+          if model.gameState == Started || model.gameState == InProgress 
+          then interpolate 
+            ", Guess Number: {0} , Max Guesses: {1}" 
+            [toString model.guessesMade , toString model.maxGuesses ]
+          else ""
+
+      in 
+        interpolate 
+          " Your guess: {0}, State: {1}, Mystery Number: {2} {3}" 
+          [ toString model.inputValue
+          , toString model.gameState
+          , toString model.mysteryNumber 
+          , stateToString]
+
   in
     case model.gameState of
       Started -> 
@@ -183,7 +222,3 @@ gameMessage model =
         ++ toString model.guessesMade
         ++ " guesses. "
         ++ "Game Over!" ++ stateMessage model
-
-
-
-

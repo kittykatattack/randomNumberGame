@@ -9,7 +9,7 @@ app =
    { init = init
    , update = update
    , view = view
-   , inputs = []
+   , inputs = [Game.newRandIntSignal]
    }
 
 

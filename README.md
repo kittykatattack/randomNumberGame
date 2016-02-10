@@ -1,264 +1,168 @@
-Number Guessing Game in Elm
+Number Guessing Game in Elm - With Random Numbers
 ===========================
 
-This is a simple number guessing game, which is a good example of how to
-use Elm to create a basic program with user input, information processing and
-output. [Click here to play the game.](https://gitcdn.xyz/repo/kittykatattack/numberGuessingGame/master/index.html)
+This is the 2nd version of the [Number Guessing Game](https://github.com/kittykatattack/numberGuessingGame) which uses
+random numbers to generate the mystery number. (Make sure you check
+out [how that first version works before you tackle this one](https://github.com/kittykatattack/numberGuessingGame)).
+This new version of the game will give you a good overview of how to
+generate and use random numbers in a typical Elm application. You can
+play a demo of the game here:
 
-This code requires a familiarity with Elm using the `StartApp`
-architecture, and a level of understanding up to about Example #5 in
-the Elm Architecture examples.
+A huge thanks to [Petre Damoc](https://gist.github.com/pdamoc) who
+contributed all this new code and explained to me how it works. You
+can read his original code [here](https://gist.github.com/pdamoc/3c4a4c9564d6235f504c), 
+and the Reddit discussion about it [here](https://www.reddit.com/r/elm/comments/44skl5/request_for_feedback_number_guessing_game/).
 
-Structure
---------
+Here are the important new additions to the game:
 
-The Number Guessing Game is made up of two modules: `Main.elm` and
-`Game.elm`. `Main.elm` just consists of the basic `StartApp` code that
-wires together the application. The game program exists entirely in the
-`Game.elm` module. It's composed of the 3 standard Elm Architecture
-units: Model, Update and View
+Generating a random number between 1 and 100
+--------------------------------------------
 
-Model
------
-
-An important feature of this game is that tagged unions are used to
-figure out the `GameState`. The game can have 4 possible states:
-`Started`, `Lost`, `Won` and `InProgress`. Here's how they're
-defined:
+First, there's a new Signal called `newRandIntSignal` that's added 
+as an `input` to the app in the `Main.elm` file.
 ```elm
-type GameState 
-  = Started 
-  | Lost
-  | Won
-  | InProgress
+app =
+  StartApp.start
+   { init = init
+   , update = update
+   , view = view
+   , inputs = [Game.newRandIntSignal]
+   }
 ```
-As you'll soon see, the `update` function is going to analyze the
-model data to figure out which of these states is currently active.
+In the `Game.elm` file, a new function called `newRandIntSignal` converts `Time.timestamp` into an `Action`.
+```js
+newRandIntMB = Signal.mailbox ()
 
-All the important game variables are stored in the `model`:
+newRandIntSignal = 
+  newRandIntMB.signal
+  |> Time.timestamp 
+  |> Signal.map toAction
+```
+This is required because the `timestamp` is needed to generate a 
+**seed** for the random number generator. 
+
+Next, the `timestamp` is converted 
+into a random integer between 1 and 100, and a new action called `NewMysteryInt` runs.
 ```elm
-type alias Model = 
-  { mysteryNumber : Int
-  , maxGuesses : Int
-  , guessesMade : Int
-  , gameState : GameState
-  , inputValue : Int
-  }
-
+toAction (t, _) = 
+  let 
+    (newInt, _) = generate (int 1 100) (initialSeed (truncate t))
+  in 
+    NewMystery newInt
+```
+The `NewMystery` action in the `update` function supplies the new random 
+integer, `newInt`, and uses it to update the model's `mysteryNumber`.
+```elm
+NewMystery newInt -> 
+  noFx { model | mysteryNumber = newInt}
+```
+The `noFx` function is just a handy way to help de-clutter boilerplate code 
+if you want to return a model but don't need to run any effects.
+```elm
+noFx model = (model, Effects.none)
+```
+The first random number is generated when the model is initialized, 
+by calling the `newIntEffect` Effect.
+```elm
 init : (Model, Effects Action)
 init =
   ({ mysteryNumber = 50
-   , maxGuesses = 10
-   , guessesMade = 0
-   , gameState = Started
-   , inputValue = 0
-   }
-   , Effects.none
-  )
+  , maxGuesses = 10
+  , guessesMade = 0
+  , gameState = Started
+  , inputValue = 0
+  }, newIntEffect)
+
+newIntEffect = 
+  Signal.send newRandIntMB.address ()
+  |> Task.map (always (EnterText ""))
+  |> Effects.task
 ```
-You can see that `gameState` is used to help track the current state
-of the game. It's initialized to `Started` when the game starts.
+It can be a little tricky to understand how `newIntEffect` works.
+Here's a description of how this works from the Reddit
+thread: 
 
-`mysteryNumber` is the number that the player has to guess. `maxGuesses` 
-is the maximum number of guesses that the player is allowed to make before the game
-ends. `guessesMade` is used to track how many guessed the player has
-made.
+> The `newIntEffect` is basically a task that will be run eventually by the runtime. 
+> It does not actually do anything in the code, it is only defined or described. 
+> As I said, this is tricky, especially if the primary experience is with an imperative 
+> language where you call things one after the other. In Elm you just declare things. 
+> You can play with the app and see it stop working once you comment out the port tasks 
+> lines. Those two lines are essential for the routing of the Tasks to the runtime.
+> Only there do they have a chance to be executed.
 
-`inputValue` is an interesting one! It actually represents the number that 
-the player will type into the HTML text input field. You'll see ahead
-how the code captures this value from the text field and copies it
-into the model.
+Why does this do: `Task.map (always (EnterText ""))`?
 
-Update
-------
+> The task produced by `Signal.send` needs to get to the runtime and be executed. 
+> With current Effects library, this means that the result of the task needs 
+> to be of type `Action`. After the task is executed in the runtime, this resulting 
+> action is sent back into the program BUT in the context of the send we are not 
+> interested in the result of that task. So, the main pattern I've seen so far is 
+> to just add an `NoOpaction` for such cases BUT, in your case, I just re-purposed 
+> `EnterText`. It doesn't really matter if `EnterText` arrives before or after 
+> `NewMystery`, the state of the model would be the same.
 
-The `update` function processes three actions:
+Additional improvements
+-----------------------
+
+This new version of the game also includes some additional, more
+cosmetic, improvements to the code.
+
+###Making a conditional statement more readable
+
+In the first version of the Number Guessing Game, the `checkGameState`
+function looked like this:
 ```elm
-type Action
-  = Guess 
-  | Restart
-  | EnterText String
+checkGameState model =
+  if model.guessesMade >= model.maxGuesses && model.inputValue /= model.mysteryNumber
+     then
+       Lost
+
+  else if model.guessesMade <= model.maxGuesses && model.inputValue == model.mysteryNumber 
+      then
+        Won
+
+  else InProgress
 ```
-
-- `Guess`: An action that runs each time the player presses the guess
-    button
-- `EnterText`: An action that runs each time the player enters any
-    text in the HTML input field.
-- `Restart`: An action that runs when the game is restarted.
-
-###The Guess Action
-
-Each time the player presses the button, the `Guess` action runs. It
-does two things:
-
-1. Sets the model's `gameState` to `Lost`, `Won` or `InProgress`
-   depending on whether or not the player has guess the correct number
-   and still has guesses left.
-
-2. Updates the number of `guessesMade` by one. 
-
+It works, but it's a bit verbose and difficult to read. By using
+pattern matching with a tuple, you can use this much more concise
+code:
 ```elm
-Guess ->
-
-  let
-    
-    -- `checkGameState` tells you if the game is InProgress, Lost or Won 
-           
-    checkGameState model =
-      if model.guessesMade >= model.maxGuesses && model.inputValue /= model.mysteryNumber
-         then
-           Lost
-
-      else if model.guessesMade <= model.maxGuesses && model.inputValue == model.mysteryNumber 
-          then
-            Won
-
-      else InProgress
-  in
-
-  ( { model 
-
-      -- Update the guessesMade
-
-      | guessesMade = model.guessesMade + 1
-
-      -- Check the state of the game
-
-      , gameState = checkGameState model
-    }
-    , Effects.none
-  )
-
+checkGameState model =
+  case 
+    ( model.guessesMade >= model.maxGuesses
+    , model.inputValue == model.mysteryNumber
+    ) 
+  of
+    (True, _) -> Lost
+    (_, True) -> Won
+     _ -> InProgress
 ```
+Just follow this same format if you have additional cases.
 
-###The EnterText action
+###Using the String.Interpolate package
 
-Whenever the player enters text into the input field, the `EnterText`
-action runs.
-
+This new code also uses the [String.Interpolate package](http://package.elm-lang.org/packages/lukewestby/elm-string-interpolate/1.0.0/) to help make
+complex string concatenation much more readable. Here's how it's used
+in the `stateMessage` function in the view.
 ```elm
-EnterText inputValue ->
-  ( { model | inputValue =
-        String.toInt inputValue 
-          |> Result.toMaybe 
-          |> Maybe.withDefault 0 
-    }
-    , Effects.none
-  )
+stateMessage model =
+  let 
+    stateToString = 
+      if model.gameState == Started || model.gameState == InProgress 
+      then interpolate 
+        ", Guess Number: {0} , Max Guesses: {1}" 
+        [toString model.guessesMade , toString model.maxGuesses ]
+      else ""
+
+  in 
+    interpolate 
+      " Your guess: {0}, State: {1}, Mystery Number: {2} {3}" 
+      [ toString model.inputValue
+      , toString model.gameState
+      , toString model.mysteryNumber 
+      , stateToString]
 ```
-Its job is to convert the input field's string value to an integer,
-and provide a default value of `0` in case the conversion operation
-fails for some reason.
+And that's it!
 
-###The Restart action
 
-The last action, `Restart` just resets the game. The will happen if
-the player presses the restart button after the game is finished.
-```elm
-Restart ->
-  init 
-```
-All it does is re-initialize the model to its original values so that
-the player can play again.
-
-View
-----
-
-The View is `<div>` tag that contains the game message text, the input
-text field, and the button that let's the player make a guess.
-```elm
-view : Signal.Address Action -> Model -> Html
-view address model =
-  div
-    []
-    [ messageDisplay model       -- The game message text
-    , inputField address         -- The input field
-    , guessButton address model  -- The button
-    ]
-```
-Each of these UI elements is created by functions, which are explained
-next.
-
-###The button
-
-The `guessButton` function displays a different label, and performs a
-different action depending on the state of the game. If the game is `Started`, or 
-`InProgress` the label displays "guess" and runs the `Guess` action.
-If the game is `Won` or `Lost`, the button label displays "restart"
-and runs the `Restart` action.
-```elm
-guessButton address model =
-  if model.gameState == Started 
-  || model.gameState == InProgress 
-  then
-    button [ onClick address Guess ] [ text "guess" ]
-
-  else
-    button [ onClick address Restart ] [ text "restart" ]
-```
-
-###The text input field
-The `inputField` function displays "Enter a number..." as the text
-field's placeholder. Only numbers can be entered. Whenever the player inputs text, the `EnterText`
-action runs.
-```elm
-inputField address = 
-  input
-    [ placeholder "Enter a number..."
-    , type' "number"
-    , on "change" targetValue (Signal.message address << EnterText)
-    ]
-    []
-```
-
-###The game state message
-
-The `gameMessage` function is the most complex. It displays a
-different message depending on the state of the game. It also contains a
-sub-function called `stateMessage` which tells the player what his/her
-guess was, the game state and the mystery number. If the game has been `Started` or 
-is `InProgress`, then current guess number and the maximum number of
-allowable guesses are also displayed.
-```elm
-gameMessage model =
-  let
-    stateMessage model =
-      " Your guess: "
-      ++ toString model.inputValue
-      ++ ", State: "
-      ++ toString model.gameState
-      ++ ", Mystery Number: "
-      ++ toString model.mysteryNumber
-      ++ if model.gameState == Started || model.gameState == InProgress then
-           ", Guess Number: " 
-           ++ toString model.guessesMade 
-           ++ ", Max Guesses:  " 
-           ++ toString model.maxGuesses
-         else
-           ""
-  in
-    case model.gameState of
-      Started -> 
-        "I am thinking of a number between 1 and 100." ++ stateMessage model
-
-      InProgress ->
-        if model.inputValue < model.mysteryNumber then
-          "That's too low." ++ stateMessage model
-
-        else 
-          "That's too high." ++ stateMessage model
-
-      Lost ->
-        "You've run out of guesses! The mystery number was: "
-        ++ toString model.mysteryNumber
-        ++ ". "
-        ++ "Game Over!" ++ stateMessage model
-
-      Won ->
-        "That's correct! It took you: "
-        ++ toString model.guessesMade
-        ++ " guesses. "
-        ++ "Game Over!" ++ stateMessage model
-
-```
 
